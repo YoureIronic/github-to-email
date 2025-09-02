@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta name="description" content="Search any GitHub username and obtain their email address.">
+    <meta name="keywords" content="information, csint, osint, intelligence, investigation, data analysis, cyber security">
+    <meta name="author" content="YoureIronic">
+    <meta name="robots" content="index, follow">
+
+    <meta name="color-scheme" content="light">
+    <meta name="theme-color" content="#FFFFFF">
+    
+    <meta property="og:title" content="GitHub to Email">
+    <meta property="og:description" content="Search any GitHub username and obtain their email address.">
+    <meta property="og:url" content="https://youreironic.github.io/github-to-email">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="en_US">
+    
+    <meta name="twitter:title" content="GitHub to Email">
+    <meta name="twitter:description" content="Search any GitHub username and obtain their email address.">
+    
+    <title>GitHub to Email</title>
+</head>
+<body>
+    <h1>GitHub to Email</h1>
+    <form id="usernameForm">
+        <label for="username">Enter GitHub username:</label>
+        <input type="text" id="username" required>
+        <button type="submit">Find Emails</button>
+    </form>
+    <p id="result"></p>
+
+    <script>
+        document.getElementById('usernameForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const username = document.getElementById('username').value;
+            const emails = await getEmails(username);
+            const resultElement = document.getElementById('result');
+            if (emails.length > 0) {
+                resultElement.textContent = `Email(s) found: ${emails.join(', ')}`;
+            } else {
+                resultElement.textContent = "No emails found.";
+            }
+        });
+
+        async function getEmails(username) {
+            const url = `https://api.github.com/users/${username}/events/public`;
+            const emailSet = new Set();
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    const events = await response.json();
+                    for (const event of events) {
+                        if (event.type === 'PushEvent') {
+                            for (const commit of event.payload.commits) {
+                                if (commit.author && commit.author.email) {
+                                    emailSet.add(commit.author.email);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+            return Array.from(emailSet);
+        }
+    </script>
+</body>
+</html>
