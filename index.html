@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta name="description" content="Search any GitHub username and obtain their email address.">
-    <meta name="keywords" content="information, csint, osint, intelligence, investigation, data analysis, cyber security">
+    <meta name="description" content="Search any GitHub username or repository and obtain their email addresses.">
+    <meta name="keywords" content="information, csint, osint, intelligence, investigation, data analysis, cyber security, GitHub, email lookup, contributor emails, GitHub API, software development, programming, open source, data privacy, digital forensics, cybersecurity tools">
     <meta name="author" content="YoureIronic">
     <meta name="robots" content="index, follow">
 
@@ -13,35 +13,69 @@
     <meta name="theme-color" content="#FFFFFF">
     
     <meta property="og:title" content="GitHub to Email">
-    <meta property="og:description" content="Search any GitHub username and obtain their email address.">
+    <meta property="og:description" content="Search any GitHub username or repository and obtain their email addresses.">
     <meta property="og:url" content="https://youreironic.github.io/github-to-email">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="en_US">
     
     <meta name="twitter:title" content="GitHub to Email">
-    <meta name="twitter:description" content="Search any GitHub username and obtain their email address.">
+    <meta name="twitter:description" content="Search any GitHub username or repository and obtain their email addresses.">
     
     <title>GitHub to Email</title>
 </head>
 <body>
     <h1>GitHub to Email</h1>
+    <form id="tokenForm">
+        <label for="token">Optional: Enter your GitHub Personal Access Token:</label>
+        <input type="text" id="token" placeholder="Enter your token here">
+        <p>Note: To create a token, go to GitHub > Settings > Developer settings > Personal access tokens > Tokens (classic) > Generate new token > Generate new token (classic). Ensure the following scopes are enabled:</p>
+        <ul>
+            <li>repo (for accessing private repositories)</li>
+            <li>public_repo (for accessing public repositories)</li>
+        </ul>
+        <p>This allows you to send more requests to GitHub's API without being rate limited.</p>
+        <button type="submit">Set Token</button>
+    </form>
+    
     <form id="usernameForm">
         <label for="username">Enter GitHub username:</label>
-        <input type="text" id="username" required>
+        <input type="text" id="username" placeholder="GitHub" required>
         <button type="submit">Find Emails</button>
     </form>
+    
+    <form id="repoForm">
+        <label for="repo">Enter GitHub URL repo:</label>
+        <input type="text" id="repo" required>
+        <button type="submit">Find Contributors' Emails</button>
+    </form>
+    
     <p id="result"></p>
 
     <script>
+        let GITHUB_TOKEN = '';
+
+        document.getElementById('tokenForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            GITHUB_TOKEN = document.getElementById('token').value;
+            alert('Token set successfully! You can now use it for API requests.');
+        });
+
         document.getElementById('usernameForm').addEventListener('submit', async function(event) {
             event.preventDefault();
             const username = document.getElementById('username').value;
             const emails = await getEmails(username);
-            const resultElement = document.getElementById('result');
-            if (emails.length > 0) {
-                resultElement.textContent = `Email(s) found: ${emails.join(', ')}`;
+            displayResult(emails);
+        });
+
+        document.getElementById('repoForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const url = document.getElementById('repo').value;
+            const { owner, repo } = parseRepoUrl(url);
+            if (owner && repo) {
+                const emails = await getEmailsRepo(owner, repo);
+                displayResult(emails);
             } else {
-                resultElement.textContent = "No emails found.";
+                displayResult([]);
             }
         });
 
@@ -49,7 +83,11 @@
             const url = `https://api.github.com/users/${username}/events/public`;
             const emailSet = new Set();
             try {
-                const response = await fetch(url);
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': GITHUB_TOKEN ? `token ${GITHUB_TOKEN}` : undefined
+                    }
+                });
                 if (response.ok) {
                     const events = await response.json();
                     for (const event of events) {
@@ -61,11 +99,68 @@
                             }
                         }
                     }
+                } else {
+                    handleRateLimit(response);
                 }
             } catch (error) {
                 console.error('Error:', error);
             }
             return Array.from(emailSet);
+        }
+
+        async function getEmailsRepo(owner, repo) {
+            const url = `https://api.github.com/repos/${owner}/${repo}/contributors`;
+            const emailMap = {};
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': GITHUB_TOKEN ? `token ${GITHUB_TOKEN}` : undefined
+                    }
+                });
+                if (response.ok) {
+                    const contributors = await response.json();
+                    for (const contributor of contributors) {
+                        const emails = await getEmails(contributor.login);
+                        if (emails.length > 0) {
+                            emailMap[contributor.login] = emails;
+                        }
+                    }
+                } else {
+                    handleRateLimit(response);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+            return emailMap;
+        }
+
+        function handleRateLimit(response) {
+            if (response.status === 403) {
+                const resetTime = response.headers.get('X-RateLimit-Reset');
+                const waitTime = resetTime ? (new Date(resetTime * 1000) - new Date()) / 1000 : 60;
+                alert(`Rate limit exceeded. Please wait ${Math.ceil(waitTime)} seconds.`);
+            }
+        }
+
+        function parseRepoUrl(url) {
+            const regex = /https:\/\/github\.com\/([^\/]+)\/([^\/]+)/;
+            const match = url.match(regex);
+            if (match) {
+                return { owner: match[1], repo: match[2] };
+            }
+            return { owner: null, repo: null };
+        }
+
+        function displayResult(emailMap) {
+            const resultElement = document.getElementById('result');
+            if (Object.keys(emailMap).length > 0) {
+                const resultText = Object.entries(emailMap)
+                    .map(([username, emails]) => `${username}: ${emails.join(', ')}`)
+                    .join('\n');
+                resultElement.innerHTML = `<pre>${resultText}</pre>`;
+            } else {
+                resultElement.textContent = "No emails found.";
+            }
         }
     </script>
 </body>
