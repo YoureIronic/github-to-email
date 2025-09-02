@@ -105,7 +105,8 @@
             } catch (error) {
                 console.error('Error:', error);
             }
-            return Array.from(emailSet);
+            const emailsArray = Array.from(emailSet);
+            return emailsArray;
         }
 
         async function getEmailsRepo(owner, repo) {
@@ -121,9 +122,7 @@
                     const contributors = await response.json();
                     for (const contributor of contributors) {
                         const emails = await getEmails(contributor.login);
-                        if (emails.length > 0) {
-                            emailMap[contributor.login] = emails;
-                        }
+                        emailMap[contributor.login] = Array.isArray(emails) ? emails : [];
                     }
                 } else {
                     handleRateLimit(response);
@@ -151,13 +150,30 @@
             return { owner: null, repo: null };
         }
 
-        function displayResult(emailMap) {
+        function displayResult(data) {
             const resultElement = document.getElementById('result');
-            if (Object.keys(emailMap).length > 0) {
-                const resultText = Object.entries(emailMap)
-                    .map(([username, emails]) => `${username}: ${emails.join(', ')}`)
-                    .join('\n');
-                resultElement.innerHTML = `<pre>${resultText}</pre>`;
+
+            if (Array.isArray(data)) {
+                if (data.length > 0) {
+                    resultElement.innerHTML = `<pre>Emails found: ${data.join(', ')}</pre>`;
+                } else {
+                    resultElement.textContent = "No emails found for this user.";
+                }
+            } else if (typeof data === 'object' && data !== null) {
+                if (Object.keys(data).length > 0) {
+                    const resultText = Object.entries(data)
+                        .map(([username, emails]) => {
+                            if (Array.isArray(emails) && emails.length > 0) {
+                                return `${username}: ${emails.join(', ')}`;
+                            } else {
+                                return `${username}: No valid emails found.`;
+                            }
+                        })
+                        .join('\n');
+                    resultElement.innerHTML = `<pre>${resultText}</pre>`;
+                } else {
+                    resultElement.textContent = "No emails found for this repository.";
+                }
             } else {
                 resultElement.textContent = "No emails found.";
             }
