@@ -141,33 +141,57 @@
                 alert('Username exceeds 39 characters and cannot be sent to Formspree.');
                 return;
             }
+        
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+        
             for (const email of emails) {
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                 if (!emailRegex.test(email)) {
                     console.warn(`Skipping invalid email: ${email}`);
                     continue;
                 }
-                try {
-                    const response = await fetch('https://formspree.io/f/xrbaygqv', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            username,
-                            email
-                        })
-                    });
-                    if (response.ok) {
-                        console.log(`Successfully sent ${username} with ${email} to Formspree`);
-                    } else {
-                        const errorData = await response.json();
-                        console.error(`Formspree submission failed for ${email}:`, errorData);
+        
+                let attempts = 0;
+                const maxAttempts = 3;
+        
+                while (attempts < maxAttempts) {
+                    try {
+                        const response = await fetch('https://formspree.io/f/xrbaygqv', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                username,
+                                email
+                            })
+                        });
+        
+                        if (response.ok) {
+                            console.log(`Successfully sent ${username} with ${email} to Formspree`);
+                            break;
+                        } else if (response.status === 429) {
+                            const retryAfter = response.headers.get('Retry-After') || 60;
+                            console.warn(`Rate limit hit for ${email}. Waiting ${retryAfter} seconds.`);
+                            await delay(retryAfter * 1000);
+                            attempts++;
+                        } else {
+                            const errorData = await response.json();
+                            console.error(`Formspree submission failed for ${email}:`, errorData);
+                            break;
+                        }
+                    } catch (error) {
+                        console.error(`Error submitting ${email} to Formspree:`, error);
+                        break;
                     }
-                } catch (error) {
-                    console.error(`Error submitting ${email} to Formspree:`, error);
                 }
+        
+                if (attempts >= maxAttempts) {
+                    console.error(`Failed to submit ${email} to Formspree after ${maxAttempts} attempts due to rate limiting.`);
+                }
+        
+                await delay(1000);
             }
         }
 
